@@ -3,9 +3,9 @@ const CACHE = 'v1';
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(cache => cache.addAll([
-      '/',
-      '/index.html',
-      '/manifest.json'
+      '/cabin-checklist/',
+      '/cabin-checklist/index.html',
+      '/cabin-checklist/manifest.json'
     ]))
   );
 });
