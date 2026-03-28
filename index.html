@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#2563eb">
+  <title>Cabin Checklist</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #f5f5f5; transition: background 0.3s, color 0.3s; }
+    body.dark { background: #1f2937; color: #f9fafb; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    h1 { color: #1f2937; }
+    body.dark h1 { color: #f9fafb; }
+    .toggle { padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    .toggle:hover { background: #1d4ed8; }
+    .item { display: flex; align-items: center; gap: 10px; padding: 12px; background: white; border-radius: 6px; margin-bottom: 8px; }
+    body.dark .item { background: #374151; }
+    .item.done label { text-decoration: line-through; opacity: 0.6; }
+    .item input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+    .item label { flex: 1; cursor: pointer; color: #1f2937; }
+    body.dark .item label { color: #f9fafb; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Cabin Checklist</h1>
+    <button class="toggle" onclick="toggleTheme()">🌙</button>
+  </div>
+  <div id="list"></div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+
+    const items = [
+      { text: 'Check water levels', done: false },
+      { text: 'Inspect propane tank', done: false },
+      { text: 'Test smoke detectors', done: false },
+      { text: 'Lock all windows', done: false },
+      { text: 'Turn off main water', done: false }
+    ];
+
+    const dark = localStorage.getItem('dark') === 'true';
+    if (dark) document.body.classList.add('dark');
+
+    const saved = JSON.parse(localStorage.getItem('checks') || '{}');
+    const now = Date.now();
+    
+    if (saved.timestamp && now - saved.timestamp < 86400000) {
+      saved.states.forEach((done, i) => items[i].done = done);
+    } else {
+      localStorage.removeItem('checks');
+    }
+
+    function render() {
+      document.getElementById('list').innerHTML = items.map((item, i) => `
+        <div class="item ${item.done ? 'done' : ''}">
+          <input type="checkbox" ${item.done ? 'checked' : ''} onchange="toggle(${i})">
+          <label onclick="toggle(${i})">${item.text}</label>
+        </div>
+      `).join('');
+    }
+
+    function toggle(i) {
+      items[i].done = !items[i].done;
+      localStorage.setItem('checks', JSON.stringify({
+        timestamp: Date.now(),
+        states: items.map(item => item.done)
+      }));
+      render();
+    }
+
+    function toggleTheme() {
+      document.body.classList.toggle('dark');
+      localStorage.setItem('dark', document.body.classList.contains('dark'));
+    }
+
+    render();
+  </script>
+</body>
+</html>
