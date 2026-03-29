@@ -1,6 +1,7 @@
-const CACHE = 'v4';
+const CACHE = 'v5';
 
 self.addEventListener('install', e => {
+  self.skipWaiting();
   e.waitUntil(
     caches.open(CACHE).then(cache => cache.addAll([
       '/cabin-checklist/',
@@ -9,6 +10,16 @@ self.addEventListener('install', e => {
       '/cabin-checklist/favicon.png',
       '/cabin-checklist/icon-192.png'
     ]))
+  );
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys.filter(key => key !== CACHE).map(key => caches.delete(key))
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
