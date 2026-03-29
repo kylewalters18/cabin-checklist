@@ -1,6 +1,6 @@
 {
   "name": "Cabin Checklist",
-  "short_name": "Cabin",
+  "short_name": "Cabin Checklist",
   "start_url": "/cabin-checklist/",
   "display": "standalone",
   "background_color": "#ffffff",
