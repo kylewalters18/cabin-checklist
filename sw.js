@@ -1,4 +1,4 @@
-const CACHE = 'v5';
+const CACHE = 'v6';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -8,7 +8,8 @@ self.addEventListener('install', e => {
       '/cabin-checklist/index.html',
       '/cabin-checklist/manifest.json',
       '/cabin-checklist/favicon.png',
-      '/cabin-checklist/icon-192.png'
+      '/cabin-checklist/icon-192.png',
+      '/cabin-checklist/apple-touch-icon.png'
     ]))
   );
 });
