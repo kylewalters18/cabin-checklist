@@ -15,6 +15,11 @@
     body.dark h1 { color: #f9fafb; }
     .toggle { padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; }
     .toggle:hover { background: #1d4ed8; }
+    .season-toggle { display: flex; gap: 10px; margin-bottom: 20px; }
+    .season-btn { flex: 1; padding: 12px; background: white; color: #1f2937; border: 2px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 500; }
+    .season-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+    body.dark .season-btn { background: #374151; color: #f9fafb; border-color: #4b5563; }
+    body.dark .season-btn.active { background: #2563eb; border-color: #2563eb; }
     .item { display: flex; align-items: center; gap: 10px; padding: 12px; background: white; border-radius: 6px; margin-bottom: 8px; }
     body.dark .item { background: #374151; }
     .item.done label { text-decoration: line-through; opacity: 0.6; }
@@ -28,6 +33,10 @@
     <h1>Cabin Checklist</h1>
     <button class="toggle" onclick="toggleTheme()">🌙</button>
   </div>
+  <div class="season-toggle">
+    <button class="season-btn active" onclick="setSeason('summer')">Summer</button>
+    <button class="season-btn" onclick="setSeason('winter')">Winter</button>
+  </div>
   <div id="list"></div>
 
   <script>
@@ -35,13 +44,72 @@
       navigator.serviceWorker.register('sw.js');
     }
 
-    const items = [
-      { text: 'Check water levels', done: false },
-      { text: 'Inspect propane tank', done: false },
-      { text: 'Test smoke detectors', done: false },
-      { text: 'Lock all windows', done: false },
-      { text: 'Turn off main water', done: false }
-    ];
+    const lists = {
+      summer: [
+        { text: 'Turn hot water heater to pilot', done: false },
+        { text: 'Turn off 2 well switches', done: false },
+        { text: 'Clean bathroom toilet, sink, tub', done: false },
+        { text: 'Empty bathroom trash - put new bag in', done: false },
+        { text: 'Strip bed (sheets and pillow cases only) and put in utility sink', done: false },
+        { text: 'Wash and dry (if here long enough the day you leave)', done: false },
+        { text: 'Towels in utility sink (or washed and dried if here long enough)', done: false },
+        { text: 'Place quilt and blankets back in plastic zipper bags and hang on hook in room', done: false },
+        { text: 'Empty any fridge food', done: false },
+        { text: 'Wipe out fridge', done: false },
+        { text: 'Wash dishes and put away', done: false },
+        { text: 'Empty coffee grounds', done: false },
+        { text: 'Clean counters, stove, fridge and microwave', done: false },
+        { text: 'Vacuum floors (mop if stained)', done: false },
+        { text: 'Close blinds', done: false },
+        { text: 'Make sure all windows are closed and locked', done: false },
+        { text: 'Pick up dog poop in dog area (bucket and scooper are attached to fence)', done: false },
+        { text: 'Slide dog door cover down', done: false },
+        { text: 'Take kitchen trash with you', done: false },
+        { text: 'Lock front door correctly', done: false },
+        { text: 'Make sure propane grill tank is turned off and grill is covered', done: false },
+        { text: 'Lock front gate', done: false }
+      ],
+      winter: [
+        { text: 'Turn off 2 well switches', done: false },
+        { text: 'Replenish deck wood pile & kindling', done: false },
+        { text: 'Turn on kitchen sink handles and leave on (even after water stops flowing!)', done: false },
+        { text: 'Turn on and leave on downstairs sink', done: false },
+        { text: 'Turn on and leave on downstairs bathtub', done: false },
+        { text: 'Flush downstairs toilet', done: false },
+        { text: 'Open downstairs cabinet door', done: false },
+        { text: 'Turn on and leave on upstairs sink', done: false },
+        { text: 'Turn on and leave on upstairs bathtub', done: false },
+        { text: 'Flush upstairs toilet', done: false },
+        { text: 'Open upstairs cabinet door', done: false },
+        { text: 'Leave left bedroom, upstairs bedroom and bathroom doors open (so pipes get heat)', done: false },
+        { text: 'Turn thermostat for heat to 48 (push set, while blinking push down arrow to 48, push set again)', done: false },
+        { text: 'Make sure rag is in the outside dryer vent', done: false },
+        { text: 'Turn hot water heater to pilot', done: false },
+        { text: 'Clean bathroom toilet, sink, tub', done: false },
+        { text: 'Empty bathroom trash - put new bag in', done: false },
+        { text: 'Strip bed (sheets and pillow cases only) and put in utility sink', done: false },
+        { text: 'Wash and dry (if here long enough the day you leave)', done: false },
+        { text: 'Towels in utility sink (or washed and dried if here long enough)', done: false },
+        { text: 'Place quilt and blankets back in plastic zipper bags and hang on hook in room', done: false },
+        { text: 'Empty any fridge food', done: false },
+        { text: 'Wipe out fridge', done: false },
+        { text: 'Wash dishes and put away', done: false },
+        { text: 'Empty coffee grounds', done: false },
+        { text: 'Clean counters, stove, fridge and microwave', done: false },
+        { text: 'Vacuum floors (mop if stained)', done: false },
+        { text: 'Close blinds', done: false },
+        { text: 'Make sure all windows are closed and locked', done: false },
+        { text: 'Pick up dog poop in dog area (bucket and scooper are attached to fence)', done: false },
+        { text: 'Slide dog door cover down', done: false },
+        { text: 'Take kitchen trash with you', done: false },
+        { text: 'Lock front door correctly', done: false },
+        { text: 'Make sure propane grill tank is turned off and grill is covered', done: false },
+        { text: 'Lock front gate', done: false }
+      ]
+    };
+
+    let season = localStorage.getItem('season') || 'summer';
+    let items = lists[season];
 
     const dark = localStorage.getItem('dark') === 'true';
     if (dark) document.body.classList.add('dark');
@@ -49,13 +117,15 @@
     const saved = JSON.parse(localStorage.getItem('checks') || '{}');
     const now = Date.now();
     
-    if (saved.timestamp && now - saved.timestamp < 86400000) {
+    if (saved.timestamp && now - saved.timestamp < 86400000 && saved.season === season) {
       saved.states.forEach((done, i) => items[i].done = done);
-    } else {
-      localStorage.removeItem('checks');
     }
 
     function render() {
+      document.querySelectorAll('.season-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.toLowerCase() === season);
+      });
+      
       document.getElementById('list').innerHTML = items.map((item, i) => `
         <div class="item ${item.done ? 'done' : ''}">
           <input type="checkbox" ${item.done ? 'checked' : ''} onchange="toggle(${i})">
@@ -68,8 +138,23 @@
       items[i].done = !items[i].done;
       localStorage.setItem('checks', JSON.stringify({
         timestamp: Date.now(),
+        season: season,
         states: items.map(item => item.done)
       }));
+      render();
+    }
+
+    function setSeason(newSeason) {
+      season = newSeason;
+      items = lists[season];
+      localStorage.setItem('season', season);
+      
+      const saved = JSON.parse(localStorage.getItem('checks') || '{}');
+      const now = Date.now();
+      if (saved.timestamp && now - saved.timestamp < 86400000 && saved.season === season) {
+        saved.states.forEach((done, i) => items[i].done = done);
+      }
+      
       render();
     }
 
