@@ -190,6 +190,11 @@
       }
       
       render();
+      
+      // Request current state from peer when switching seasons
+      if (conn && conn.open) {
+        conn.send({ type: 'request_state', season: season });
+      }
     }
 
     function toggleTheme() {
@@ -315,6 +320,15 @@
       });
 
       conn.on('data', (remoteState) => {
+        // Handle state request
+        if (remoteState.type === 'request_state') {
+          const state = JSON.parse(localStorage.getItem('checks') || '{}');
+          if (state.states && state.season === remoteState.season) {
+            conn.send(state);
+          }
+          return;
+        }
+        
         if (remoteState.season === season) {
           // Only merge on first sync, then use normal sync
           if (!hasInitialMerge) {
