@@ -28,6 +28,7 @@
     .item input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
     .item label { flex: 1; cursor: pointer; color: #1f2937; }
     body.dark .item label { color: #f9fafb; }
+    #qr-code { display: flex; justify-content: center; }
   </style>
 </head>
 <body>
@@ -199,6 +200,19 @@
 
     // PeerJS - Single QR scan
     async function hostSession() {
+      // Close camera if Join is open
+      if (document.getElementById('camera-container').style.display === 'block') {
+        stopCamera();
+      }
+      
+      // Toggle off if already showing
+      if (document.getElementById('qr-container').style.display === 'block') {
+        document.getElementById('qr-container').style.display = 'none';
+        updateStatus('');
+        if (peer) peer.destroy();
+        return;
+      }
+      
       updateStatus('Creating session...');
       const peerId = 'cabin-' + Math.random().toString(36).substr(2, 6);
       
@@ -218,6 +232,19 @@
     }
 
     async function joinSession() {
+      // Close QR if Host is open
+      if (document.getElementById('qr-container').style.display === 'block') {
+        document.getElementById('qr-container').style.display = 'none';
+        if (peer) peer.destroy();
+      }
+      
+      // Toggle off if already showing
+      if (document.getElementById('camera-container').style.display === 'block') {
+        stopCamera();
+        updateStatus('');
+        return;
+      }
+      
       updateStatus('Starting camera...');
       try {
         cameraStream = await navigator.mediaDevices.getUserMedia({ 
@@ -285,13 +312,33 @@
         }
       });
 
-      conn.on('data', (state) => {
-        if (state.season === season) {
-          state.states.forEach((done, i) => {
+      conn.on('data', (remoteState) => {
+        if (remoteState.season === season) {
+          const localState = JSON.parse(localStorage.getItem('checks') || '{}');
+          
+          // Merge: if either side has item checked, keep it checked
+          const mergedStates = remoteState.states.map((remoteDone, i) => {
+            const localDone = localState.states && localState.states[i];
+            return remoteDone || localDone || false;
+          });
+          
+          mergedStates.forEach((done, i) => {
             if (items[i]) items[i].done = done;
           });
-          localStorage.setItem('checks', JSON.stringify(state));
+          
+          const merged = {
+            timestamp: Date.now(),
+            season: season,
+            states: mergedStates
+          };
+          
+          localStorage.setItem('checks', JSON.stringify(merged));
           render();
+          
+          // Send merged state back if different
+          if (JSON.stringify(mergedStates) !== JSON.stringify(remoteState.states)) {
+            conn.send(merged);
+          }
         }
       });
 
