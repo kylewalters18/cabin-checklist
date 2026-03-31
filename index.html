@@ -70,6 +70,7 @@
     let peer = null;
     let conn = null;
     let cameraStream = null;
+    let hasInitialMerge = false;
 
     const lists = {
       summer: [
@@ -306,6 +307,7 @@
     function setupConnection() {
       conn.on('open', () => {
         updateStatus('✓ Synced');
+        hasInitialMerge = false; // Reset for new connection
         const state = JSON.parse(localStorage.getItem('checks') || '{}');
         if (state.states) {
           conn.send(state);
@@ -314,36 +316,48 @@
 
       conn.on('data', (remoteState) => {
         if (remoteState.season === season) {
-          const localState = JSON.parse(localStorage.getItem('checks') || '{}');
-          
-          // Merge: if either side has item checked, keep it checked
-          const mergedStates = remoteState.states.map((remoteDone, i) => {
-            const localDone = localState.states && localState.states[i];
-            return remoteDone || localDone || false;
-          });
-          
-          mergedStates.forEach((done, i) => {
-            if (items[i]) items[i].done = done;
-          });
-          
-          const merged = {
-            timestamp: Date.now(),
-            season: season,
-            states: mergedStates
-          };
-          
-          localStorage.setItem('checks', JSON.stringify(merged));
-          render();
-          
-          // Send merged state back if different
-          if (JSON.stringify(mergedStates) !== JSON.stringify(remoteState.states)) {
-            conn.send(merged);
+          // Only merge on first sync, then use normal sync
+          if (!hasInitialMerge) {
+            hasInitialMerge = true;
+            const localState = JSON.parse(localStorage.getItem('checks') || '{}');
+            
+            // Merge: if either side has item checked, keep it checked
+            const mergedStates = remoteState.states.map((remoteDone, i) => {
+              const localDone = localState.states && localState.states[i];
+              return remoteDone || localDone || false;
+            });
+            
+            mergedStates.forEach((done, i) => {
+              if (items[i]) items[i].done = done;
+            });
+            
+            const merged = {
+              timestamp: Date.now(),
+              season: season,
+              states: mergedStates
+            };
+            
+            localStorage.setItem('checks', JSON.stringify(merged));
+            render();
+            
+            // Send merged state back if different
+            if (JSON.stringify(mergedStates) !== JSON.stringify(remoteState.states)) {
+              conn.send(merged);
+            }
+          } else {
+            // Normal sync - just apply remote state
+            remoteState.states.forEach((done, i) => {
+              if (items[i]) items[i].done = done;
+            });
+            localStorage.setItem('checks', JSON.stringify(remoteState));
+            render();
           }
         }
       });
 
       conn.on('close', () => {
         updateStatus('Disconnected');
+        hasInitialMerge = false;
       });
     }
 
