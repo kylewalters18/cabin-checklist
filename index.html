@@ -35,16 +35,40 @@
     <h1>Cabin Checklist</h1>
     <button class="toggle" onclick="toggleTheme()">🌙</button>
   </div>
+  
+  <div id="sync-controls" style="margin-bottom: 20px; display: flex; gap: 10px;">
+    <button class="toggle" onclick="hostSession()" style="flex: 1;">Host Session</button>
+    <button class="toggle" onclick="joinSession()" style="flex: 1;">Join Session</button>
+  </div>
+  <div id="sync-status" style="text-align: center; font-size: 12px; color: #6b7280; margin-bottom: 20px;"></div>
+  
+  <div id="qr-container" style="display: none; margin-bottom: 20px; text-align: center; background: white; padding: 20px; border-radius: 6px;">
+    <div id="qr-code"></div>
+    <p style="margin-top: 10px; font-size: 14px; color: #6b7280;">Scan this code with the other phone</p>
+  </div>
+  
+  <div id="camera-container" style="display: none; margin-bottom: 20px;">
+    <video id="camera" style="width: 100%; border-radius: 6px;" autoplay playsinline></video>
+    <button class="toggle" onclick="stopCamera()" style="width: 100%; margin-top: 10px;">Cancel</button>
+  </div>
+  
   <div class="season-toggle">
     <button class="season-btn active" onclick="setSeason('summer')">Summer</button>
     <button class="season-btn" onclick="setSeason('winter')">Winter</button>
   </div>
   <div id="list"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js');
     }
+
+    let peerConnection = null;
+    let dataChannel = null;
+    let isHost = false;
+    let cameraStream = null;
 
     const lists = {
       summer: [
@@ -138,11 +162,17 @@
 
     function toggle(i) {
       items[i].done = !items[i].done;
-      localStorage.setItem('checks', JSON.stringify({
+      const state = {
         timestamp: Date.now(),
         season: season,
         states: items.map(item => item.done)
-      }));
+      };
+      localStorage.setItem('checks', JSON.stringify(state));
+      
+      if (dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(JSON.stringify(state));
+      }
+      
       render();
     }
 
@@ -166,6 +196,201 @@
     }
 
     render();
+
+    // WebRTC Functions
+    async function hostSession() {
+      isHost = true;
+      updateStatus('Setting up...');
+      
+      peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      dataChannel = peerConnection.createDataChannel('checklist');
+      setupDataChannel();
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      const offerData = { offer: offer };
+      
+      peerConnection.onicecandidate = async (e) => {
+        if (!e.candidate) {
+          const fullOffer = JSON.stringify({
+            offer: peerConnection.localDescription
+          });
+          showQRCode(fullOffer);
+          updateStatus('Waiting for peer...');
+        }
+      };
+    }
+
+    async function joinSession() {
+      updateStatus('Starting camera...');
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        const video = document.getElementById('camera');
+        video.srcObject = cameraStream;
+        document.getElementById('camera-container').style.display = 'block';
+        scanQRCode(video);
+      } catch (err) {
+        updateStatus('Camera access denied');
+      }
+    }
+
+    function showQRCode(data) {
+      const container = document.getElementById('qr-code');
+      container.innerHTML = '';
+      document.getElementById('qr-container').style.display = 'block';
+      new QRCode(container, {
+        text: data,
+        width: 256,
+        height: 256
+      });
+    }
+
+    function scanQRCode(video) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      const scan = () => {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          
+          if (code) {
+            stopCamera();
+            handleScannedOffer(code.data);
+            return;
+          }
+        }
+        requestAnimationFrame(scan);
+      };
+      scan();
+    }
+
+    async function handleScannedOffer(data) {
+      updateStatus('Connecting...');
+      const { offer } = JSON.parse(data);
+      
+      peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      peerConnection.ondatachannel = (e) => {
+        dataChannel = e.channel;
+        setupDataChannel();
+      };
+
+      await peerConnection.setRemoteDescription(offer);
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      peerConnection.onicecandidate = async (e) => {
+        if (!e.candidate) {
+          const fullAnswer = JSON.stringify({
+            answer: peerConnection.localDescription
+          });
+          showQRCode(fullAnswer);
+          updateStatus('Show this to host phone');
+          
+          // Auto-start camera for host to scan answer
+          setTimeout(() => {
+            if (confirm('Ready for host to scan your answer?')) {
+              startAnswerScan();
+            }
+          }, 2000);
+        }
+      };
+    }
+
+    async function startAnswerScan() {
+      document.getElementById('qr-container').style.display = 'none';
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        const video = document.getElementById('camera');
+        video.srcObject = cameraStream;
+        document.getElementById('camera-container').style.display = 'block';
+        scanAnswerQRCode(video);
+      } catch (err) {
+        updateStatus('Camera access denied');
+      }
+    }
+
+    function scanAnswerQRCode(video) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      const scan = () => {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          
+          if (code) {
+            stopCamera();
+            handleScannedAnswer(code.data);
+            return;
+          }
+        }
+        requestAnimationFrame(scan);
+      };
+      scan();
+    }
+
+    async function handleScannedAnswer(data) {
+      const { answer } = JSON.parse(data);
+      await peerConnection.setRemoteDescription(answer);
+      document.getElementById('qr-container').style.display = 'none';
+      updateStatus('Connected!');
+    }
+
+    function setupDataChannel() {
+      dataChannel.onopen = () => {
+        updateStatus('✓ Synced');
+        // Send current state
+        const state = JSON.parse(localStorage.getItem('checks') || '{}');
+        if (state.states) {
+          dataChannel.send(JSON.stringify(state));
+        }
+      };
+
+      dataChannel.onmessage = (e) => {
+        const state = JSON.parse(e.data);
+        if (state.season === season) {
+          state.states.forEach((done, i) => {
+            if (items[i]) items[i].done = done;
+          });
+          localStorage.setItem('checks', JSON.stringify(state));
+          render();
+        }
+      };
+
+      dataChannel.onclose = () => {
+        updateStatus('Disconnected');
+      };
+    }
+
+    function stopCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+      document.getElementById('camera-container').style.display = 'none';
+    }
+
+    function updateStatus(msg) {
+      document.getElementById('sync-status').textContent = msg;
+    }
   </script>
 </body>
 </html>
